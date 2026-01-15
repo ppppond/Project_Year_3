@@ -1,0 +1,8 @@
+
+path: /Users/than-/Documents/y3_porject/datasets
+train: images
+val: images
+names:
+  0: dog
+  1: cat
+  2: person
