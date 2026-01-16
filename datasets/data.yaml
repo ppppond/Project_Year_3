@@ -1,8 +1,20 @@
 
-path: /Users/than-/Documents/y3_porject/datasets
+path: D:\com vision\datasets
 train: images
 val: images
 names:
-  0: dog
-  1: cat
-  2: person
+  0: Cheetah
+  1: Fox
+  2: Hamster
+  3: Lion
+  4: Sheep
+  5: Tiger
+  6: Wolf
+  7: cat
+  8: cow
+  9: deer
+  10: dog
+  11: horse
+  12: parrot
+  13: pig
+  14: rabbit
