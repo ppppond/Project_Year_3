@@ -11,14 +11,18 @@ st.set_page_config(
     page_icon="🧊",
 )
 
+from preview import preview_page  
+
 menu = st.sidebar.radio(
     "เมนูใช้งาน",
     [
         "1. Labeling (วาดกรอบ)",
-        "2. Train (สอน AI)",
-        "3. Predict (ทำนาย)",
-        "4. Webcam (กล้องสด)",
-        "5. Video Scan (วิดีโอ)",
+        "2. Preview Labeled Images",  
+        "3. Train (สอน AI)",
+        "4. Predict (ทำนาย)",
+        "5. Webcam (กล้องสด)",
+        "6. Video Scan (วิดีโอ)",
+        
     ],
 )
 
@@ -32,3 +36,5 @@ elif "Webcam" in menu:
     webcam_page()
 elif "Video Scan" in menu:
     video_scan_page()
+elif "Preview" in menu:
+    preview_page()  
