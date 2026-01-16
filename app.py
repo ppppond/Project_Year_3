@@ -28,6 +28,8 @@ menu = st.sidebar.radio(
 
 if "Labeling" in menu:
     labeling_page()
+elif "Preview" in menu:
+    preview_page()  
 elif "Train" in menu:
     train_page()
 elif "Predict" in menu:
@@ -36,5 +38,4 @@ elif "Webcam" in menu:
     webcam_page()
 elif "Video Scan" in menu:
     video_scan_page()
-elif "Preview" in menu:
-    preview_page()  
+
