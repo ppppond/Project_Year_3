@@ -8,13 +8,11 @@ def video_scan_page():
     from ultralytics import YOLO
     from config import BASE_DIR
 
-# ==========================================
-# 5. VIDEO SCAN (ใช้ best.pt เหมือน Predict)
-# ==========================================
+    # ==========================================
+    # 5. VIDEO SCAN (ใช้ best.pt เหมือน Predict)
+    # ==========================================
 
     st.header("📹 5. Video Scan (Upload / YouTube)")
-
-    import uuid
 
     # ---------- SESSION STATE ----------
     if "current_video_path" not in st.session_state:
@@ -73,16 +71,29 @@ def video_scan_page():
                                     pass
 
                             unique_name = f"yt_{uuid.uuid4().hex}.mp4"
+
+                            # 🔥 FIX SABR STREAMING
                             ydl_opts = {
-                                "format": "best[ext=mp4]/best",
+                                "format": "bv*[ext=mp4]+ba[ext=m4a]/b",
                                 "outtmpl": os.path.join(BASE_DIR, unique_name),
-                                "quiet": True,
                                 "noplaylist": True,
+                                "quiet": True,
+                                "merge_output_format": "mp4",
+                                "extractor_args": {
+                                    "youtube": {
+                                        "player_client": ["android"]
+                                    }
+                                }
                             }
 
                             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                                 info = ydl.extract_info(youtube_url, download=True)
                                 filename = ydl.prepare_filename(info)
+
+                                # ✅ ป้องกันไฟล์ว่าง
+                                if not os.path.exists(filename) or os.path.getsize(filename) == 0:
+                                    raise Exception("ไฟล์วิดีโอว่าง (0 bytes)")
+
                                 st.session_state.current_video_path = filename
                                 st.success(f"โหลดเสร็จ: {info.get('title', 'Video')}")
 
@@ -108,20 +119,23 @@ def video_scan_page():
                 cap = cv2.VideoCapture(st.session_state.current_video_path)
                 st_frame = st.empty()
 
+                if not cap.isOpened():
+                    raise Exception("ไม่สามารถเปิดไฟล์วิดีโอได้")
+
                 while cap.isOpened() and st.session_state.processing:
                     ret, frame = cap.read()
                     if not ret:
                         st.session_state.processing = False
                         break
 
-                    # 🔧 Resize แบบคงสัดส่วน (เหมาะกับ Shorts)
+                    # 🔧 Resize คงสัดส่วน (เหมาะกับ Shorts)
                     target_width = 600
                     h, w = frame.shape[:2]
                     scale = target_width / w
                     new_h = int(h * scale)
                     frame = cv2.resize(frame, (target_width, new_h))
 
-                    # 🔍 Predict
+                    # 🔍 YOLO Predict
                     results = model(frame, conf=conf_threshold)
                     plotted = results[0].plot()
 

@@ -1,19 +1,19 @@
 def train_page():
     import streamlit as st
     import os
+    import torch
     from ultralytics import YOLO
     from helpers.dataset_helper import create_yaml
     from config import DATASET_DIR
 
     # ==========================================
-    # 2. TRAIN
+    # HEADER
     # ==========================================
-
     st.header("🚀 2. Train Model")
 
-    # -----------------------------
+    # ==========================================
     # CLASS LIST
-    # -----------------------------
+    # ==========================================
     st.subheader("📌 Class List")
 
     class_text = st.text_area(
@@ -30,9 +30,9 @@ def train_page():
     else:
         st.warning("ยังไม่ได้ใส่ class")
 
-    # -----------------------------
-    # CREATE data.yaml
-    # -----------------------------
+    # ==========================================
+    # CREATE YAML
+    # ==========================================
     if st.button("📄 สร้าง data.yaml"):
         if not classes:
             st.error("❌ กรุณาใส่ Class อย่างน้อย 1 class")
@@ -43,9 +43,9 @@ def train_page():
 
     st.divider()
 
-    # -----------------------------
-    # TRAIN SETTING
-    # -----------------------------
+    # ==========================================
+    # TRAIN SETTINGS
+    # ==========================================
     st.subheader("⚙️ Train Settings")
 
     epochs = st.number_input(
@@ -76,23 +76,41 @@ def train_page():
 
     st.divider()
 
-    # -----------------------------
+    # ==========================================
     # START TRAIN
-    # -----------------------------
+    # ==========================================
     if st.button("🚀 Start Training"):
+
         yaml_path = os.path.join(DATASET_DIR, "data.yaml")
 
         if not os.path.exists(yaml_path):
             st.error("❌ ไม่พบ data.yaml กรุณาสร้างก่อน")
             return
 
+        # --------------------------------------
+        # ตรวจสอบ GPU
+        # --------------------------------------
+        if torch.cuda.is_available():
+            device = 0
+            gpu_name = torch.cuda.get_device_name(0)
+            st.success(f"🚀 ใช้ GPU: {gpu_name}")
+        else:
+            device = "cpu"
+            st.warning("⚠️ ไม่พบ GPU ใช้ CPU แทน")
+
+        # --------------------------------------
+        # Train Model
+        # --------------------------------------
         with st.spinner("⏳ กำลัง Train Model..."):
+
             model = YOLO(model_type)
+
             model.train(
                 data=yaml_path,
                 epochs=epochs,
                 batch=batch,
                 imgsz=imgsz,
+                device=device,  # 👈 บังคับเลือก device
                 project="runs/detect",
                 name="my_custom_model",
                 exist_ok=True,
