@@ -87,16 +87,30 @@ def train_page():
             st.error("❌ ไม่พบ data.yaml กรุณาสร้างก่อน")
             return
 
+         # --------------------------------------
+        # ตรวจสอบ GPU (รองรับ NVIDIA / AMD (ROCm) / Mac M-Series)
         # --------------------------------------
-        # ตรวจสอบ GPU
-        # --------------------------------------
+        device = "cpu"  # Default
+
+        # CUDA (NVIDIA) หรือ ROCm (AMD) สำหรับ Linux ที่ติดตั้ง PyTorch ที่รองรับ ROCm
         if torch.cuda.is_available():
-            device = 0
-            gpu_name = torch.cuda.get_device_name(0)
-            st.success(f"🚀 ใช้ GPU: {gpu_name}")
-        else:
-            device = "cpu"
-            st.warning("⚠️ ไม่พบ GPU ใช้ CPU แทน")
+            # ถ้าเป็น ROCm build จะมี torch.version.hip
+            if getattr(torch.version, "hip", None) is not None:
+                # ROCm (AMD) - ใช้ same device indexing as CUDA (0, 1, ...)
+                device = 0
+                st.success("🚀 ใช้ AMD GPU (ROCm)")
+            else:
+                device = 0
+                try:
+                    gpu_name = torch.cuda.get_device_name(0)
+                except Exception:
+                    gpu_name = "CUDA GPU"
+                st.success(f"🚀 ใช้ NVIDIA GPU: {gpu_name}")
+
+        elif torch.backends.mps.is_available():
+            # นี่คือส่วนสำคัญสำหรับ Mac M4 / M-Series
+            device = "mps"
+            st.success("🚀 ใช้ Apple Metal Performance Shaders (MPS / M-Series GPU) 🍏")
 
         # --------------------------------------
         # Train Model
