@@ -1,0 +1,10 @@
+
+path: D:\com vision v2\datasets
+train: images
+val: images
+names:
+  0: battery
+  1: cardboard
+  2: glass
+  3: metal
+  4: plastic
