@@ -1,9 +1,0 @@
-
-path: D:\Project_Year_3\datasets
-train: images
-val: images
-names:
-  0: obsolete
-  1: solder ball
-  2: varnish
-  3: glue
