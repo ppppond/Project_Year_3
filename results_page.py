@@ -101,7 +101,8 @@ def results_page():
             metrics = model.val(
                 data=yaml_path,
                 split="val",
-                device=device,  # 👈 เพิ่มตรงนี้
+                device=device,  
+                workers=2, 
                 save=True,
                 project=run_dir,
                 name="validation_results",

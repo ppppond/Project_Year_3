@@ -124,7 +124,8 @@ def train_page():
                 epochs=epochs,
                 batch=batch,
                 imgsz=imgsz,
-                device=device,  # 👈 บังคับเลือก device
+                device=device,  
+                workers=2, 
                 project="runs/detect",
                 name="my_custom_model",
                 exist_ok=True,

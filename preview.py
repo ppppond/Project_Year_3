@@ -5,11 +5,48 @@ from config import IMG_DIR, LABEL_DIR
 from PIL import Image, ImageDraw
 
 
-def preview_page():
-    st.header("🖼️ Preview Labeled Images (With Bounding Boxes)")
+@st.cache_data(show_spinner=False)
+def load_image_with_boxes(img_path, label_path, class_list):
+    img = Image.open(img_path).convert("RGB")
+    draw = ImageDraw.Draw(img)
 
-    if not os.path.exists(IMG_DIR):
-        st.warning("❌ IMG_DIR ไม่พบ")
+    if os.path.exists(label_path):
+        w, h = img.size
+        with open(label_path, "r") as f:
+            lines = f.read().splitlines()
+
+        for line in lines:
+            parts = line.strip().split()
+            if len(parts) == 5:
+                cid, xc, yc, nw, nh = map(float, parts)
+                class_id = int(cid)
+
+                left = (xc - nw / 2) * w
+                top = (yc - nh / 2) * h
+                right = (xc + nw / 2) * w
+                bottom = (yc + nh / 2) * h
+
+                draw.rectangle([left, top, right, bottom],
+                               outline="red", width=2)
+
+                class_name = (
+                    class_list[class_id]
+                    if class_id < len(class_list)
+                    else f"Class {class_id}"
+                )
+
+                draw.text((left, max(0, top - 15)),
+                          class_name,
+                          fill="red")
+
+    return img
+
+
+def preview_page():
+    st.header("🖼️ Preview Labeled Images")
+
+    if not os.path.exists(IMG_DIR) or not os.path.exists(LABEL_DIR):
+        st.warning("ไม่พบโฟลเดอร์รูปหรือ label")
         return
 
     labeled_imgs = sorted([
@@ -18,34 +55,36 @@ def preview_page():
     ])
 
     if not labeled_imgs:
-        st.info("ยังไม่มีรูปที่บันทึก")
+        st.info("ยังไม่มีรูป")
         return
 
-    # ==============================
-    # 🎯 เลือก Class
-    # ==============================
-    if "class_list" in st.session_state and st.session_state.class_list:
-        selected_filter = st.selectbox(
-            "🎯 เลือก Class ที่ต้องการแสดง",
-            ["ทั้งหมด"] + st.session_state.class_list
-        )
-    else:
-        st.warning("ไม่พบ class_list ใน session_state")
+    if "class_list" not in st.session_state:
+        st.warning("ไม่พบ class_list")
         return
 
-    # ==============================
-    # 🔎 Filter รูปจาก label ก่อน
-    # ==============================
+    class_list = st.session_state.class_list
+
+    selected_filter = st.selectbox(
+        "🎯 เลือก Class",
+        ["ทั้งหมด"] + class_list,
+        key="class_filter"
+    )
+
+    # ======================
+    # Filter
+    # ======================
     filtered_imgs = []
 
     if selected_filter == "ทั้งหมด":
         filtered_imgs = labeled_imgs
     else:
-        selected_id = st.session_state.class_list.index(selected_filter)
+        selected_id = class_list.index(selected_filter)
 
         for img_file in labeled_imgs:
-            label_file = img_file.rsplit(".", 1)[0] + ".txt"
-            label_path = os.path.join(LABEL_DIR, label_file)
+            label_path = os.path.join(
+                LABEL_DIR,
+                img_file.rsplit(".", 1)[0] + ".txt"
+            )
 
             if not os.path.exists(label_path):
                 continue
@@ -54,88 +93,123 @@ def preview_page():
                 lines = f.read().splitlines()
 
             for line in lines:
-                parts = line.strip().split()
-                if len(parts) == 5:
-                    cid = int(float(parts[0]))
-                    if cid == selected_id:
-                        filtered_imgs.append(img_file)
-                        break  # เจอแล้วไม่ต้องเช็คต่อ
+                cid = int(float(line.split()[0]))
+                if cid == selected_id:
+                    filtered_imgs.append(img_file)
+                    break
 
     if not filtered_imgs:
-        st.warning("ไม่พบรูปที่มี class นี้")
+        st.warning("ไม่พบรูป class นี้")
         return
 
-    # ==============================
-    # 📄 Pagination
-    # ==============================
+    # ======================
+    # Pagination
+    # ======================
     images_per_page = 50
-    total_images = len(filtered_imgs)
-    total_pages = math.ceil(total_images / images_per_page)
+    total_pages = math.ceil(len(filtered_imgs) / images_per_page)
 
     page = st.number_input(
         "เลือกหน้า",
         min_value=1,
         max_value=total_pages,
         value=1,
-        step=1
+        key="page_number"
     )
 
-    start_idx = (page - 1) * images_per_page
-    end_idx = start_idx + images_per_page
-    page_images = filtered_imgs[start_idx:end_idx]
+    start = (page - 1) * images_per_page
+    end = start + images_per_page
+    page_images = filtered_imgs[start:end]
 
-    st.markdown(
-        f"แสดงรูป {start_idx + 1} - {min(end_idx, total_images)} จาก {total_images} รูป"
-    )
+    # ======================
+    # Zoom Section
+    # ======================
+    if "zoom_image" in st.session_state:
+        st.divider()
+        st.subheader(f"🔍 {st.session_state.zoom_image}")
 
-    # ==============================
-    # 🖼️ แสดงรูป (5 รูปต่อแถว)
-    # ==============================
+        full_img_path = os.path.join(
+            IMG_DIR,
+            st.session_state.zoom_image
+        )
+
+        label_path = os.path.join(
+            LABEL_DIR,
+            st.session_state.zoom_image.rsplit(".", 1)[0] + ".txt"
+        )
+
+        img = load_image_with_boxes(
+            full_img_path,
+            label_path,
+            class_list
+        )
+
+        st.image(img, use_column_width=True)
+
+        if st.button("❌ ปิดภาพ"):
+            del st.session_state.zoom_image
+            st.rerun()
+
+        st.divider()
+
+    # ======================
+    # Grid
+    # ======================
     cols = st.columns(5)
 
     for i, img_file in enumerate(page_images):
         with cols[i % 5]:
 
             img_path = os.path.join(IMG_DIR, img_file)
-            img = Image.open(img_path).convert("RGB")
-            draw = ImageDraw.Draw(img)
+            label_path = os.path.join(
+                LABEL_DIR,
+                img_file.rsplit(".", 1)[0] + ".txt"
+            )
 
-            label_file = img_file.rsplit(".", 1)[0] + ".txt"
-            label_path = os.path.join(LABEL_DIR, label_file)
+            img = load_image_with_boxes(
+                img_path,
+                label_path,
+                class_list
+            )
 
-            if os.path.exists(label_path):
-                w, h = img.size
+            st.image(img, width=250)
 
-                with open(label_path, "r") as f:
-                    lines = f.read().splitlines()
+            # Zoom Button
+            if st.button("🔍", key=f"zoom_{img_file}"):
+                st.session_state.zoom_image = img_file
+                st.rerun()
 
-                for line in lines:
-                    parts = line.strip().split()
-                    if len(parts) == 5:
-                        cid, xc, yc, nw, nh = map(float, parts)
-                        class_id = int(cid)
+            # ======================
+            # Delete Section
+            # ======================
+            delete_key = f"delete_{img_file}"
+            confirm_key = f"confirm_{img_file}"
 
-                        left = (xc - nw / 2) * w
-                        top = (yc - nh / 2) * h
-                        right = (xc + nw / 2) * w
-                        bottom = (yc + nh / 2) * h
+            if st.button("🗑 Delete", key=delete_key):
+                st.session_state[confirm_key] = True
 
-                        draw.rectangle(
-                            [left, top, right, bottom],
-                            outline="red",
-                            width=2
-                        )
+            if st.session_state.get(confirm_key, False):
+                st.warning(f"ยืนยันการลบ {img_file}?")
 
-                        class_name = (
-                            st.session_state.class_list[class_id]
-                            if class_id < len(st.session_state.class_list)
-                            else f"Class {class_id}"
-                        )
+                col1, col2 = st.columns(2)
 
-                        draw.text(
-                            (left, max(0, top - 12)),
-                            class_name,
-                            fill="red"
-                        )
+                with col1:
+                    if st.button("✅ ยืนยัน", key=f"yes_{img_file}"):
+                        try:
+                            if os.path.exists(img_path):
+                                os.remove(img_path)
 
-            st.image(img, caption=img_file, use_column_width=True)
+                            if os.path.exists(label_path):
+                                os.remove(label_path)
+
+                            st.success(f"ลบ {img_file} เรียบร้อยแล้ว")
+
+                            st.session_state.pop(confirm_key, None)
+                            st.rerun()
+
+                        except Exception as e:
+                            st.error(f"เกิดข้อผิดพลาด: {e}")
+
+                with col2:
+                    if st.button("❌ ยกเลิก", key=f"no_{img_file}"):
+                        st.session_state.pop(confirm_key, None)
+                        st.rerun()
