@@ -1,3 +1,6 @@
+import warnings
+warnings.filterwarnings("ignore") 
+
 def train_page():
     import streamlit as st
     import os
@@ -5,7 +8,7 @@ def train_page():
     from ultralytics import YOLO
     from helpers.dataset_helper import create_yaml
     from config import DATASET_DIR
-
+    
     # ==========================================
     # HEADER
     # ==========================================
@@ -87,7 +90,7 @@ def train_page():
             st.error("❌ ไม่พบ data.yaml กรุณาสร้างก่อน")
             return
 
-         # --------------------------------------
+        # --------------------------------------
         # ตรวจสอบ GPU (รองรับ NVIDIA / AMD (ROCm) / Mac M-Series)
         # --------------------------------------
         device = "cpu"  # Default

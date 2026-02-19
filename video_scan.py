@@ -110,6 +110,10 @@ def video_scan_page():
         if st.button("▶️ เริ่ม / หยุด Scan", type="primary"):
             st.session_state.processing = not st.session_state.processing
 
+        # ---------- EXPAND VIDEO BUTTON ----------
+        expand_video = st.checkbox("🔍 ขยายวิดีโอใหญ่", value=False)
+        target_width = 1200 if expand_video else 600
+
         # ---------- PROCESSING ----------
         if st.session_state.processing:
             try:
@@ -128,8 +132,7 @@ def video_scan_page():
                         st.session_state.processing = False
                         break
 
-                    # 🔧 Resize คงสัดส่วน (เหมาะกับ Shorts)
-                    target_width = 600
+                    # 🔧 Resize คงสัดส่วน
                     h, w = frame.shape[:2]
                     scale = target_width / w
                     new_h = int(h * scale)

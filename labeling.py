@@ -12,7 +12,7 @@ def labeling_page():
     MAX_WIDTH = 1000
 
     # ==============================
-    # Helper: Load Classes
+    # Load / Save Classes
     # ==============================
     def load_classes():
         if not os.path.exists(CLASSES_FILE):
@@ -20,31 +20,22 @@ def labeling_page():
         with open(CLASSES_FILE, "r", encoding="utf-8") as f:
             return [c.strip() for c in f.readlines() if c.strip()]
 
-    # ==============================
-    # Helper: Save Classes
-    # ==============================
     def save_classes(class_list):
         with open(CLASSES_FILE, "w", encoding="utf-8") as f:
             f.write("\n".join(class_list))
 
-    # ==========================================
-    # HEADER
-    # ==========================================
     st.header("🖌️ 1. Labeling: Multi-Image Annotation")
 
     col1, col2 = st.columns([1, 3])
 
-    # ==========================================
+    # =========================================================
     # LEFT PANEL
-    # ==========================================
+    # =========================================================
     with col1:
         st.markdown("### ⚙️ ตั้งค่า Class")
 
         if "class_list" not in st.session_state:
             st.session_state.class_list = load_classes()
-
-        if not st.session_state.class_list:
-            st.info("ยังไม่มี classes.txt กรุณาเพิ่ม class แล้วกด Save")
 
         class_text = st.text_area(
             "รายชื่อวัตถุ (บรรทัดละชื่อ)",
@@ -67,15 +58,11 @@ def labeling_page():
             st.warning("⚠ กรุณาเพิ่มอย่างน้อย 1 class")
             return
 
-        selected_class = st.selectbox("👉 กำลังจะวาด:", new_class_list)
         stroke_width = st.slider("ความหนาเส้น", 1, 5, 2)
 
         st.divider()
         st.markdown("### 🖼️ Image Config")
 
-        # ==========================
-        # Default Image Config State
-        # ==========================
         defaults = {
             "rotate_angle": 0,
             "flip_h": False,
@@ -96,18 +83,15 @@ def labeling_page():
         contrast = st.slider("🎚️ Contrast", 0.2, 2.0, key="contrast")
         color = st.slider("🎨 Color", 0.2, 2.0, key="color")
 
-        # ==========================
-        # Reset Button
-        # ==========================
         def reset_image_config():
             for k, v in defaults.items():
                 st.session_state[k] = v
 
         st.button("♻️ Reset Image Config", on_click=reset_image_config)
 
-    # ==========================================
+    # =========================================================
     # RIGHT PANEL
-    # ==========================================
+    # =========================================================
     with col2:
 
         uploaded_files = st.file_uploader(
@@ -128,16 +112,12 @@ def labeling_page():
         )
 
         uploaded_file = uploaded_files[selected_idx]
-
-        # 🔒 Reset pointer
         uploaded_file.seek(0)
         file_bytes = uploaded_file.getvalue()
 
-        # ---------------------------
-        # Load + Transform Image
-        # ---------------------------
         orig_image = Image.open(uploaded_file).convert("RGB")
 
+        # 🔥 ใช้ transform_image เหมือนเดิม
         image = transform_image(
             orig_image,
             rotate_angle,
@@ -150,9 +130,7 @@ def labeling_page():
 
         orig_w, orig_h = image.size
 
-        # ---------------------------
-        # Resize for Display
-        # ---------------------------
+        # Resize display
         if orig_w > MAX_WIDTH:
             scale = MAX_WIDTH / orig_w
             new_w = int(orig_w * scale)
@@ -163,9 +141,6 @@ def labeling_page():
             new_w, new_h = orig_w, orig_h
             display_image = image
 
-        # ===========================
-        # Stable Canvas Key
-        # ===========================
         hash_input = file_bytes + str(selected_idx).encode()
         canvas_hash = hashlib.md5(hash_input).hexdigest()
         canvas_key = f"canvas_{canvas_hash}"
@@ -182,9 +157,9 @@ def labeling_page():
             key=canvas_key,
         )
 
-        # ---------------------------
-        # Save Bounding Boxes
-        # ---------------------------
+        # ==========================
+        # Multi-Class per Box
+        # ==========================
         if canvas.json_data is not None:
 
             objects = pd.json_normalize(canvas.json_data["objects"])
@@ -193,26 +168,22 @@ def labeling_page():
 
                 st.success(f"✅ พบ {len(objects)} กรอบ")
 
+                st.markdown("### 🏷️ กำหนด Class ให้แต่ละกรอบ")
+
+                class_per_box = []
+
+                for i in range(len(objects)):
+                    selected = st.selectbox(
+                        f"กรอบที่ {i+1}",
+                        new_class_list,
+                        key=f"class_box_{i}"
+                    )
+                    class_per_box.append(selected)
+
                 if st.button("💾 บันทึกข้อมูล (Save)", type="primary"):
 
-                    suffix = []
-                    if rotate_angle != 0:
-                        suffix.append(f"rot{rotate_angle}")
-                    if flip_h:
-                        suffix.append("fh")
-                    if flip_v:
-                        suffix.append("fv")
-                    if brightness != 1.0:
-                        suffix.append(f"b{brightness}")
-                    if contrast != 1.0:
-                        suffix.append(f"c{contrast}")
-                    if color != 1.0:
-                        suffix.append(f"col{color}")
-
-                    suffix = "_".join(suffix) if suffix else "orig"
-
-                    img_name = f"{os.path.splitext(uploaded_file.name)[0]}_{suffix}.jpg"
-                    label_name = img_name.replace(".jpg", ".txt")
+                    img_name = uploaded_file.name
+                    label_name = os.path.splitext(img_name)[0] + ".txt"
 
                     os.makedirs(IMG_DIR, exist_ok=True)
                     os.makedirs(LABEL_DIR, exist_ok=True)
@@ -221,7 +192,7 @@ def labeling_page():
 
                     lines = []
 
-                    for _, row in objects.iterrows():
+                    for idx, row in objects.iterrows():
                         left = row["left"] / scale
                         top = row["top"] / scale
                         width = row["width"] / scale
@@ -232,7 +203,7 @@ def labeling_page():
                         nw = width / orig_w
                         nh = height / orig_h
 
-                        cid = new_class_list.index(selected_class)
+                        cid = new_class_list.index(class_per_box[idx])
 
                         lines.append(
                             f"{cid} {xc:.6f} {yc:.6f} {nw:.6f} {nh:.6f}"
