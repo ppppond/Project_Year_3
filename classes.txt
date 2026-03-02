@@ -1,4 +1,2 @@
-obsolete
-solder ball
-varnish
-glue
+good
+bad

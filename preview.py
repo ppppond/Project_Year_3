@@ -5,7 +5,7 @@ from config import IMG_DIR, LABEL_DIR
 from PIL import Image, ImageDraw
 
 
-@st.cache_data(show_spinner=False)
+
 def load_image_with_boxes(img_path, label_path, class_list):
     img = Image.open(img_path).convert("RGB")
     draw = ImageDraw.Draw(img)
@@ -17,27 +17,33 @@ def load_image_with_boxes(img_path, label_path, class_list):
 
         for line in lines:
             parts = line.strip().split()
-            if len(parts) == 5:
-                cid, xc, yc, nw, nh = map(float, parts)
-                class_id = int(cid)
+            if not parts:
+                continue
 
-                left = (xc - nw / 2) * w
-                top = (yc - nh / 2) * h
-                right = (xc + nw / 2) * w
-                bottom = (yc + nh / 2) * h
+            class_id = int(float(parts[0]))
+            class_name = (
+                class_list[class_id]
+                if class_id < len(class_list)
+                else f"Class {class_id}"
+            )
 
-                draw.rectangle([left, top, right, bottom],
-                               outline="red", width=2)
+            coords = list(map(float, parts[1:]))
 
-                class_name = (
-                    class_list[class_id]
-                    if class_id < len(class_list)
-                    else f"Class {class_id}"
-                )
+            # ต้องมีอย่างน้อย 3 จุด (6 ค่า) และจำนวนค่าต้องเป็นคู่
+            if len(coords) < 6 or len(coords) % 2 != 0:
+                continue
 
-                draw.text((left, max(0, top - 15)),
-                          class_name,
-                          fill="red")
+            points = [
+                (coords[i] * w, coords[i + 1] * h)
+                for i in range(0, len(coords), 2)
+            ]
+
+            draw.polygon(points, outline="red", width=2)
+            draw.text(
+                (points[0][0], max(0, points[0][1] - 15)),
+                class_name,
+                fill="red"
+            )
 
     return img
 
@@ -93,7 +99,10 @@ def preview_page():
                 lines = f.read().splitlines()
 
             for line in lines:
-                cid = int(float(line.split()[0]))
+                parts = line.strip().split()
+                if not parts:
+                    continue
+                cid = int(float(parts[0]))
                 if cid == selected_id:
                     filtered_imgs.append(img_file)
                     break
@@ -105,7 +114,7 @@ def preview_page():
     # ======================
     # Pagination
     # ======================
-    images_per_page = 50
+    images_per_page = 25
     total_pages = math.ceil(len(filtered_imgs) / images_per_page)
 
     page = st.number_input(
@@ -173,7 +182,6 @@ def preview_page():
 
             st.image(img, width=250)
 
-            # Zoom Button
             if st.button("🔍", key=f"zoom_{img_file}"):
                 st.session_state.zoom_image = img_file
                 st.rerun()

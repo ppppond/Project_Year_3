@@ -3,6 +3,7 @@ def labeling_page():
     import pandas as pd
     import os
     import hashlib
+    import math
     from PIL import Image
     from streamlit_drawable_canvas import st_canvas
     from config import IMG_DIR, LABEL_DIR
@@ -11,9 +12,6 @@ def labeling_page():
     CLASSES_FILE = "classes.txt"
     MAX_WIDTH = 1000
 
-    # ==============================
-    # Load / Save Classes
-    # ==============================
     def load_classes():
         if not os.path.exists(CLASSES_FILE):
             return []
@@ -28,9 +26,6 @@ def labeling_page():
 
     col1, col2 = st.columns([1, 3])
 
-    # =========================================================
-    # LEFT PANEL
-    # =========================================================
     with col1:
         st.markdown("### ⚙️ ตั้งค่า Class")
 
@@ -61,6 +56,19 @@ def labeling_page():
         stroke_width = st.slider("ความหนาเส้น", 1, 5, 2)
 
         st.divider()
+        st.markdown("### 🛠️ Drawing Mode")
+
+        drawing_mode = st.radio(
+            "เครื่องมือวาด",
+            ["rect", "polygon", "transform"],
+            horizontal=True,
+            help="rect=วาดสี่เหลี่ยม | polygon=วาดหลายเหลี่ยม (ดับเบิลคลิกเพื่อปิด) | transform=เลือก/หมุน/ย้ายกรอบที่วาดแล้ว"
+        )
+
+        if drawing_mode == "polygon":
+            st.info("💡 คลิกเพื่อเพิ่มจุด **ดับเบิลคลิก** เพื่อปิดรูปทรง")
+
+        st.divider()
         st.markdown("### 🖼️ Image Config")
 
         defaults = {
@@ -89,9 +97,6 @@ def labeling_page():
 
         st.button("♻️ Reset Image Config", on_click=reset_image_config)
 
-    # =========================================================
-    # RIGHT PANEL
-    # =========================================================
     with col2:
 
         uploaded_files = st.file_uploader(
@@ -117,7 +122,6 @@ def labeling_page():
 
         orig_image = Image.open(uploaded_file).convert("RGB")
 
-        # 🔥 ใช้ transform_image เหมือนเดิม
         image = transform_image(
             orig_image,
             rotate_angle,
@@ -130,7 +134,6 @@ def labeling_page():
 
         orig_w, orig_h = image.size
 
-        # Resize display
         if orig_w > MAX_WIDTH:
             scale = MAX_WIDTH / orig_w
             new_w = int(orig_w * scale)
@@ -153,13 +156,10 @@ def labeling_page():
             update_streamlit=True,
             height=new_h,
             width=new_w,
-            drawing_mode="rect",
+            drawing_mode=drawing_mode,
             key=canvas_key,
         )
 
-        # ==========================
-        # Multi-Class per Box
-        # ==========================
         if canvas.json_data is not None:
 
             objects = pd.json_normalize(canvas.json_data["objects"])
@@ -193,21 +193,60 @@ def labeling_page():
                     lines = []
 
                     for idx, row in objects.iterrows():
-                        left = row["left"] / scale
-                        top = row["top"] / scale
-                        width = row["width"] / scale
-                        height = row["height"] / scale
-
-                        xc = (left + width / 2) / orig_w
-                        yc = (top + height / 2) / orig_h
-                        nw = width / orig_w
-                        nh = height / orig_h
-
                         cid = new_class_list.index(class_per_box[idx])
 
-                        lines.append(
-                            f"{cid} {xc:.6f} {yc:.6f} {nw:.6f} {nh:.6f}"
-                        )
+                        # --- Rectangle → Seg format (4 มุม รองรับการหมุน) ---
+                        if row.get("type") in ("rect", None) and pd.notna(row.get("left", None)):
+
+                            w_box = row["width"] * row.get("scaleX", 1.0) / scale
+                            h_box = row["height"] * row.get("scaleY", 1.0) / scale
+                            angle = row.get("angle", 0)
+                            rad   = math.radians(angle)
+
+                            tl_x = row["left"] / scale
+                            tl_y = row["top"] / scale
+
+                            cx = tl_x + (w_box / 2) * math.cos(rad) - (h_box / 2) * math.sin(rad)
+                            cy = tl_y + (w_box / 2) * math.sin(rad) + (h_box / 2) * math.cos(rad)
+
+                            w2, h2 = w_box / 2, h_box / 2
+                            corners = [(-w2, -h2), (w2, -h2), (w2, h2), (-w2, h2)]
+                            rotated = [
+                                (cx + dx * math.cos(rad) - dy * math.sin(rad),
+                                 cy + dx * math.sin(rad) + dy * math.cos(rad))
+                                for dx, dy in corners
+                            ]
+
+                            coords = " ".join(
+                                f"{x/orig_w:.6f} {y/orig_h:.6f}" for x, y in rotated
+                            )
+                            lines.append(f"{cid} {coords}")
+
+                        # --- Polygon → Seg format (ทุกจุดที่คลิก) ---
+                        elif "path" in row and row.get("path") is not None:
+                            try:
+                                path_data = row["path"]
+
+                                points = [
+                                    (p[1] / scale, p[2] / scale)
+                                    for p in path_data
+                                    if len(p) >= 3 and p[0] in ("M", "L")
+                                ]
+
+                                if len(points) < 3:
+                                    st.warning(f"กรอบที่ {idx+1}: polygon ต้องมีอย่างน้อย 3 จุด")
+                                    continue
+
+                                coords = " ".join(
+                                    f"{x/orig_w:.6f} {y/orig_h:.6f}" for x, y in points
+                                )
+                                lines.append(f"{cid} {coords}")
+
+                            except Exception:
+                                continue
+
+                        else:
+                            continue
 
                     with open(os.path.join(LABEL_DIR, label_name), "w") as f:
                         f.write("\n".join(lines))

@@ -1,6 +1,6 @@
-task: detect
+task: segment
 mode: train
-model: yolov8n.pt
+model: yolov8n-seg.pt
 data: D:\Project_Year_3\datasets\data.yaml
 epochs: 30
 time: null

@@ -1,5 +1,5 @@
 import warnings
-warnings.filterwarnings("ignore") 
+warnings.filterwarnings("ignore")
 
 def train_page():
     import streamlit as st
@@ -8,15 +8,9 @@ def train_page():
     from ultralytics import YOLO
     from helpers.dataset_helper import create_yaml
     from config import DATASET_DIR
-    
-    # ==========================================
-    # HEADER
-    # ==========================================
+
     st.header("🚀 2. Train Model")
 
-    # ==========================================
-    # CLASS LIST
-    # ==========================================
     st.subheader("📌 Class List")
 
     class_text = st.text_area(
@@ -33,9 +27,6 @@ def train_page():
     else:
         st.warning("ยังไม่ได้ใส่ class")
 
-    # ==========================================
-    # CREATE YAML
-    # ==========================================
     if st.button("📄 สร้าง data.yaml"):
         if not classes:
             st.error("❌ กรุณาใส่ Class อย่างน้อย 1 class")
@@ -46,42 +37,19 @@ def train_page():
 
     st.divider()
 
-    # ==========================================
-    # TRAIN SETTINGS
-    # ==========================================
     st.subheader("⚙️ Train Settings")
 
-    epochs = st.number_input(
-        "Epochs",
-        min_value=10,
-        max_value=300,
-        value=30,
-        step=10
-    )
-
-    batch = st.selectbox(
-        "Batch Size",
-        [4, 8, 16, 32],
-        index=1
-    )
-
-    imgsz = st.selectbox(
-        "Image Size",
-        [416, 512, 640, 768],
-        index=2
-    )
-
+    epochs = st.number_input("Epochs", min_value=10, max_value=300, value=30, step=10)
+    batch = st.selectbox("Batch Size", [4, 8, 16, 32], index=1)
+    imgsz = st.selectbox("Image Size", [416, 512, 640, 768], index=2)
     model_type = st.selectbox(
         "YOLO Model",
-        ["yolov8n.pt", "yolov8s.pt", "yolov8m.pt"],
+        ["yolov8n-seg.pt", "yolov8s-seg.pt", "yolov8m-seg.pt"],
         index=0
     )
 
     st.divider()
 
-    # ==========================================
-    # START TRAIN
-    # ==========================================
     if st.button("🚀 Start Training"):
 
         yaml_path = os.path.join(DATASET_DIR, "data.yaml")
@@ -90,16 +58,15 @@ def train_page():
             st.error("❌ ไม่พบ data.yaml กรุณาสร้างก่อน")
             return
 
-        # --------------------------------------
-        # ตรวจสอบ GPU (รองรับ NVIDIA / AMD (ROCm) / Mac M-Series)
-        # --------------------------------------
-        device = "cpu"  # Default
+        # ✅ ลบ results.csv เก่าก่อน train เพื่อป้องกัน ParserError
+        results_csv = os.path.join("runs", "detect", "my_custom_model", "results.csv")
+        if os.path.exists(results_csv):
+            os.remove(results_csv)
 
-        # CUDA (NVIDIA) หรือ ROCm (AMD) สำหรับ Linux ที่ติดตั้ง PyTorch ที่รองรับ ROCm
+        device = "cpu"
+
         if torch.cuda.is_available():
-            # ถ้าเป็น ROCm build จะมี torch.version.hip
             if getattr(torch.version, "hip", None) is not None:
-                # ROCm (AMD) - ใช้ same device indexing as CUDA (0, 1, ...)
                 device = 0
                 st.success("🚀 ใช้ AMD GPU (ROCm)")
             else:
@@ -111,13 +78,9 @@ def train_page():
                 st.success(f"🚀 ใช้ NVIDIA GPU: {gpu_name}")
 
         elif torch.backends.mps.is_available():
-            # นี่คือส่วนสำคัญสำหรับ Mac M4 / M-Series
             device = "mps"
             st.success("🚀 ใช้ Apple Metal Performance Shaders (MPS / M-Series GPU) 🍏")
 
-        # --------------------------------------
-        # Train Model
-        # --------------------------------------
         with st.spinner("⏳ กำลัง Train Model..."):
 
             model = YOLO(model_type)
@@ -127,11 +90,12 @@ def train_page():
                 epochs=epochs,
                 batch=batch,
                 imgsz=imgsz,
-                device=device,  
-                workers=2, 
+                device=device,
+                task="segment",
+                workers=2,
                 project="runs/detect",
                 name="my_custom_model",
-                exist_ok=True,
+                exist_ok=True,  
             )
 
         st.success("🎉 Train เสร็จเรียบร้อย!")

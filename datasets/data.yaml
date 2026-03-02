@@ -1,0 +1,7 @@
+
+path: D:\Project_Year_3\datasets
+train: images
+val: images
+names:
+  0: good
+  1: bad
