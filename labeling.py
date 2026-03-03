@@ -22,7 +22,7 @@ def labeling_page():
         with open(CLASSES_FILE, "w", encoding="utf-8") as f:
             f.write("\n".join(class_list))
 
-    st.header("🖌️ Labeling: Image Annotation")
+    st.header("🖌️ Labeling: Multi-Image Annotation")
 
     col1, col2 = st.columns([1, 3])
 
