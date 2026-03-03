@@ -9,7 +9,7 @@ def train_page():
     from helpers.dataset_helper import create_yaml
     from config import DATASET_DIR
 
-    st.header("🚀 2. Train Model")
+    st.header("🚀 Train Model")
 
     st.subheader("📌 Class List")
 

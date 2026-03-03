@@ -6,7 +6,7 @@ def results_page():
     from ultralytics import YOLO
     from config import DATASET_DIR
 
-    st.header("📊 3. Model Performance")
+    st.header("📊 Model Performance")
 
     base_dir = "runs/detect"
 

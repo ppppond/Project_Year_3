@@ -4,7 +4,7 @@ def webcam_page():
     from ultralytics import YOLO
     import time
 
-    st.header("🎥 4. Webcam (ไม่ใช้ Thread)")
+    st.header("🎥 Webcam (ไม่ใช้ Thread)")
 
     if "cam_running" not in st.session_state:
         st.session_state.cam_running = False

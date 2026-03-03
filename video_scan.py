@@ -12,7 +12,7 @@ def video_scan_page():
     # 5. VIDEO SCAN (ใช้ best.pt เหมือน Predict)
     # ==========================================
 
-    st.header("📹 5. Video Scan (Upload / YouTube)")
+    st.header("📹 Video Scan (Upload / YouTube)")
 
     # ---------- SESSION STATE ----------
     if "current_video_path" not in st.session_state:

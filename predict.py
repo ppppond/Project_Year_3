@@ -7,7 +7,7 @@ def predict_page():
 # ==========================================
 # 3. PREDICT (แก้ไข: สี + Confidence Slider)
 # ==========================================
-    st.header("🔮 3. Predict")
+    st.header("🔮 Predict")
 
     col1, col2 = st.columns(2)
     
