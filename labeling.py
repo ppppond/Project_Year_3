@@ -166,89 +166,110 @@ def labeling_page():
 
             if not objects.empty:
 
-                st.success(f"✅ พบ {len(objects)} กรอบ")
+                # ✅ กรอง circle และ rect เล็กออก (noise จาก polygon)
+                NOISE_TYPES = ("circle",)
+                valid_objects = objects[
+                    ~objects["type"].isin(NOISE_TYPES)
+                ].copy()
 
-                st.markdown("### 🏷️ กำหนด Class ให้แต่ละกรอบ")
+                # กรอง rect เล็กเกินไปออกด้วย
+                def is_valid_rect(row):
+                    if row.get("type") not in ("rect", None):
+                        return True
+                    w_box = row.get("width", 0) * row.get("scaleX", 1.0) / scale
+                    h_box = row.get("height", 0) * row.get("scaleY", 1.0) / scale
+                    return w_box >= 5 and h_box >= 5
 
-                class_per_box = []
+                valid_objects = valid_objects[
+                    valid_objects.apply(is_valid_rect, axis=1)
+                ].reset_index(drop=True)
 
-                for i in range(len(objects)):
-                    selected = st.selectbox(
-                        f"กรอบที่ {i+1}",
-                        new_class_list,
-                        key=f"class_box_{i}"
-                    )
-                    class_per_box.append(selected)
+                if valid_objects.empty:
+                    st.info("ยังไม่มีกรอบที่ใช้งานได้")
+                else:
+                    st.success(f"✅ พบ {len(valid_objects)} กรอบ")
 
-                if st.button("💾 บันทึกข้อมูล (Save)", type="primary"):
+                    st.markdown("### 🏷️ กำหนด Class ให้แต่ละกรอบ")
 
-                    img_name = uploaded_file.name
-                    label_name = os.path.splitext(img_name)[0] + ".txt"
+                    class_per_box = []
 
-                    os.makedirs(IMG_DIR, exist_ok=True)
-                    os.makedirs(LABEL_DIR, exist_ok=True)
+                    for i in range(len(valid_objects)):
+                        selected = st.selectbox(
+                            f"กรอบที่ {i+1}",
+                            new_class_list,
+                            key=f"class_box_{i}"
+                        )
+                        class_per_box.append(selected)
 
-                    image.save(os.path.join(IMG_DIR, img_name))
+                    if st.button("💾 บันทึกข้อมูล (Save)", type="primary"):
 
-                    lines = []
+                        img_name = uploaded_file.name
+                        label_name = os.path.splitext(img_name)[0] + ".txt"
 
-                    for idx, row in objects.iterrows():
-                        cid = new_class_list.index(class_per_box[idx])
+                        os.makedirs(IMG_DIR, exist_ok=True)
+                        os.makedirs(LABEL_DIR, exist_ok=True)
 
-                        # --- Rectangle → Seg format (4 มุม รองรับการหมุน) ---
-                        if row.get("type") in ("rect", None) and pd.notna(row.get("left", None)):
+                        image.save(os.path.join(IMG_DIR, img_name))
 
-                            w_box = row["width"] * row.get("scaleX", 1.0) / scale
-                            h_box = row["height"] * row.get("scaleY", 1.0) / scale
-                            angle = row.get("angle", 0)
-                            rad   = math.radians(angle)
+                        lines = []
 
-                            tl_x = row["left"] / scale
-                            tl_y = row["top"] / scale
+                        for idx, row in valid_objects.iterrows():
+                            cid = new_class_list.index(class_per_box[idx])
 
-                            cx = tl_x + (w_box / 2) * math.cos(rad) - (h_box / 2) * math.sin(rad)
-                            cy = tl_y + (w_box / 2) * math.sin(rad) + (h_box / 2) * math.cos(rad)
+                            # --- Rectangle → Seg format ---
+                            if row.get("type") in ("rect", None) and pd.notna(row.get("left", None)):
 
-                            w2, h2 = w_box / 2, h_box / 2
-                            corners = [(-w2, -h2), (w2, -h2), (w2, h2), (-w2, h2)]
-                            rotated = [
-                                (cx + dx * math.cos(rad) - dy * math.sin(rad),
-                                 cy + dx * math.sin(rad) + dy * math.cos(rad))
-                                for dx, dy in corners
-                            ]
+                                w_box = row["width"] * row.get("scaleX", 1.0) / scale
+                                h_box = row["height"] * row.get("scaleY", 1.0) / scale
+                                angle = row.get("angle", 0)
+                                rad   = math.radians(angle)
 
-                            coords = " ".join(
-                                f"{x/orig_w:.6f} {y/orig_h:.6f}" for x, y in rotated
-                            )
-                            lines.append(f"{cid} {coords}")
+                                tl_x = row["left"] / scale
+                                tl_y = row["top"] / scale
 
-                        # --- Polygon → Seg format (ทุกจุดที่คลิก) ---
-                        elif "path" in row and row.get("path") is not None:
-                            try:
-                                path_data = row["path"]
+                                cx = tl_x + (w_box / 2) * math.cos(rad) - (h_box / 2) * math.sin(rad)
+                                cy = tl_y + (w_box / 2) * math.sin(rad) + (h_box / 2) * math.cos(rad)
 
-                                points = [
-                                    (p[1] / scale, p[2] / scale)
-                                    for p in path_data
-                                    if len(p) >= 3 and p[0] in ("M", "L")
+                                w2, h2 = w_box / 2, h_box / 2
+                                corners = [(-w2, -h2), (w2, -h2), (w2, h2), (-w2, h2)]
+                                rotated = [
+                                    (cx + dx * math.cos(rad) - dy * math.sin(rad),
+                                     cy + dx * math.sin(rad) + dy * math.cos(rad))
+                                    for dx, dy in corners
                                 ]
 
-                                if len(points) < 3:
-                                    st.warning(f"กรอบที่ {idx+1}: polygon ต้องมีอย่างน้อย 3 จุด")
-                                    continue
-
                                 coords = " ".join(
-                                    f"{x/orig_w:.6f} {y/orig_h:.6f}" for x, y in points
+                                    f"{x/orig_w:.6f} {y/orig_h:.6f}" for x, y in rotated
                                 )
                                 lines.append(f"{cid} {coords}")
 
-                            except Exception:
+                            # --- Polygon → Seg format ---
+                            elif "path" in row and row.get("path") is not None:
+                                try:
+                                    path_data = row["path"]
+
+                                    points = [
+                                        (p[1] / scale, p[2] / scale)
+                                        for p in path_data
+                                        if len(p) >= 3 and p[0] in ("M", "L")
+                                    ]
+
+                                    if len(points) < 3:
+                                        st.warning(f"กรอบที่ {idx+1}: polygon ต้องมีอย่างน้อย 3 จุด")
+                                        continue
+
+                                    coords = " ".join(
+                                        f"{x/orig_w:.6f} {y/orig_h:.6f}" for x, y in points
+                                    )
+                                    lines.append(f"{cid} {coords}")
+
+                                except Exception:
+                                    continue
+
+                            else:
                                 continue
 
-                        else:
-                            continue
+                        with open(os.path.join(LABEL_DIR, label_name), "w") as f:
+                            f.write("\n".join(lines))
 
-                    with open(os.path.join(LABEL_DIR, label_name), "w") as f:
-                        f.write("\n".join(lines))
-
-                    st.toast("บันทึกเรียบร้อย 🎉")
+                        st.toast("บันทึกเรียบร้อย 🎉")
