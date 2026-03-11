@@ -1,53 +1,107 @@
 def predict_page():
     import streamlit as st
     import cv2
+    import os
     from PIL import Image
     from ultralytics import YOLO
+    import tkinter as tk
+    from tkinter import filedialog
 
-# ==========================================
-# 3. PREDICT (แก้ไข: สี + Confidence Slider)
-# ==========================================
-    st.header("🔮 3. Predict")
+    # ==========================================
+    # 3. PREDICT (ปรับปรุงระบบเลือกไฟล์แบบ Folder/File)
+    # ==========================================
+    st.header("🔮 Predict")
 
-    col1, col2 = st.columns(2)
+    col_cfg, col_files = st.columns([1, 2])
     
-    with col1:
+    with col_cfg:
+        st.markdown("### ⚙️ Model Config")
         model_path = st.text_input(
             "📂 Path Model",
             "runs/detect/my_custom_model/weights/best.pt"
         )
-        # เพิ่ม Slider ปรับความมั่นใจ (ช่วยให้เจอของง่ายขึ้นถ้าโมเดลยังไม่เก่ง)
         conf_threshold = st.slider("🎚️ ความมั่นใจ (Confidence)", 0.0, 1.0, 0.25, 0.05)
 
-    with col2:
-        img_file = st.file_uploader("🖼️ เลือกรูปภาพ", type=["jpg", "png", "jpeg"])
-
-    if img_file and st.button("🔍 เริ่มทำนาย (Predict)", type="primary"):
-        # 1. โหลดโมเดล (ใส่ Try-Catch กัน Error)
-        try:
-            model = YOLO(model_path)
-        except Exception as e:
-            st.error(f"❌ ไม่พบไฟล์โมเดลที่: {model_path}")
-            st.stop()
-
-        # 2. แปลงรูปและส่งเข้าโมเดล
-        pil_img = Image.open(img_file)
+    with col_files:
+        st.markdown("### 📁 Select Images")
         
-        # ใส่ค่า conf เพื่อกรองความมั่นใจ
-        results = model(pil_img, conf=conf_threshold)
+        # --- ระบบเลือก Folder และ File (เหมือนหน้า Labeling) ---
+        if "pred_selected_files" not in st.session_state:
+            st.session_state.pred_selected_files = []
+        if "pred_target_folder" not in st.session_state:
+            st.session_state.pred_target_folder = ""
 
-        # 3. ดึงรูปผลลัพธ์ (ซึ่งเป็น BGR)
-        res_plotted_bgr = results[0].plot()
-
-        # 4. ⭐ แก้สีจาก BGR -> RGB ตรงนี้ ⭐
-        res_plotted_rgb = cv2.cvtColor(res_plotted_bgr, cv2.COLOR_BGR2RGB)
-
-        # 5. แสดงผล
-        st.image(res_plotted_rgb, caption="ผลลัพธ์การทำนาย", use_column_width=True)
+        # ปรับปุ่มให้ชิดกันทางซ้าย
+        col_btn1, col_btn2, col_spacer = st.columns([0.25, 0.25, 0.5])
         
-        # แสดงจำนวนที่เจอ
-        boxes = results[0].boxes
-        if len(boxes) > 0:
-            st.success(f"✅ เจอวัตถุทั้งหมด {len(boxes)} ชิ้น")
-        else:
-            st.warning("⚠️ ไม่เจอวัตถุ (ลองลดค่า Confidence ลงดูนะครับ)")
+        with col_btn1:
+            if st.button("📁 Open Folder...", use_container_width=True):
+                root = tk.Tk()
+                root.withdraw()
+                root.attributes('-topmost', True)
+                folder_selected = filedialog.askdirectory(master=root)
+                root.destroy()
+                if folder_selected:
+                    st.session_state.pred_target_folder = folder_selected
+                    st.session_state.pred_selected_files = sorted([
+                        os.path.join(folder_selected, f) for f in os.listdir(folder_selected)
+                        if f.lower().endswith((".png", ".jpg", ".jpeg"))
+                    ])
+                    st.rerun()
+
+        with col_btn2:
+            if st.button("🖼️ Open File...", use_container_width=True):
+                root = tk.Tk()
+                root.withdraw()
+                root.attributes('-topmost', True)
+                files_selected = filedialog.askopenfilenames(
+                    master=root,
+                    filetypes=[("Image files", "*.png *.jpg *.jpeg")]
+                )
+                root.destroy()
+                if files_selected:
+                    st.session_state.pred_selected_files = list(files_selected)
+                    st.session_state.pred_target_folder = os.path.dirname(files_selected[0])
+                    st.rerun()
+
+        if not st.session_state.pred_selected_files:
+            st.info("💡 เลือก 'Open Folder' หรือ 'Open File' เพื่อเริ่มการทำนาย")
+            return
+
+        # --- แสดงรายการไฟล์ให้เลือก ---
+        file_paths = st.session_state.pred_selected_files
+        file_names_only = [os.path.basename(p) for p in file_paths]
+
+        selected_idx = st.selectbox(
+            f"📄 รายการไฟล์ (พบ {len(file_names_only)} รูป)",
+            range(len(file_names_only)),
+            format_func=lambda i: file_names_only[i],
+        )
+
+        img_path = file_paths[selected_idx]
+
+        if st.button("🔍 เริ่มทำนาย (Predict)", type="primary", use_container_width=True):
+            try:
+                model = YOLO(model_path)
+            except Exception:
+                st.error(f"❌ ไม่พบไฟล์โมเดลที่: {model_path}")
+                st.stop()
+
+            # โหลดรูปและรันโมเดล
+            pil_img = Image.open(img_path).convert("RGB")
+            results = model(pil_img, conf=conf_threshold)
+
+            # ประมวลผลภาพผลลัพธ์
+            res_plotted_bgr = results[0].plot()
+            res_plotted_rgb = cv2.cvtColor(res_plotted_bgr, cv2.COLOR_BGR2RGB)
+
+            # แสดงผล
+            st.divider()
+            st.image(res_plotted_rgb, caption=f"ผลลัพธ์: {file_names_only[selected_idx]}", use_container_width=True)
+            
+            # สรุปจำนวน
+            boxes = results[0].boxes
+            if len(boxes) > 0:
+                st.success(f"✅ เจอวัตถุทั้งหมด {len(boxes)} ชิ้น")
+            else:
+                st.warning("⚠️ ไม่เจอวัตถุ (ลองลดค่า Confidence ลงดูนะครับ)")

@@ -2,132 +2,278 @@ def labeling_page():
     import streamlit as st
     import pandas as pd
     import os
+    import hashlib
+    import math
     from PIL import Image
     from streamlit_drawable_canvas import st_canvas
     from config import IMG_DIR, LABEL_DIR
     from helpers.image_helper import transform_image
 
-# ==========================================
-# 1. LABELING (MULTI IMAGE)
-# ==========================================
-    st.header("🖌️ 1. Labeling: Multi-Image Annotation")
+    CLASSES_FILE = "classes.txt"
+    MAX_WIDTH = 1000
+
+    def load_classes():
+        if not os.path.exists(CLASSES_FILE):
+            return []
+        with open(CLASSES_FILE, "r", encoding="utf-8") as f:
+            return [c.strip() for c in f.readlines() if c.strip()]
+
+    def save_classes(class_list):
+        with open(CLASSES_FILE, "w", encoding="utf-8") as f:
+            f.write("\n".join(class_list))
+
+    st.header("🖌️ Labeling: Multi-Image Annotation")
 
     col1, col2 = st.columns([1, 3])
 
-    # ---------- LEFT ----------
     with col1:
         st.markdown("### ⚙️ ตั้งค่า Class")
 
         if "class_list" not in st.session_state:
-            st.session_state.class_list = ["dog", "cat", "person"]
+            st.session_state.class_list = load_classes()
 
         class_text = st.text_area(
             "รายชื่อวัตถุ (บรรทัดละชื่อ)",
             "\n".join(st.session_state.class_list),
             height=120,
         )
-        st.session_state.class_list = [
-            c.strip() for c in class_text.split("\n") if c.strip()
-        ]
 
-        selected_class = st.selectbox(
-            "👉 กำลังจะวาด:",
-            st.session_state.class_list,
-        )
+        new_class_list = [c.strip() for c in class_text.split("\n") if c.strip()]
+
+        if st.button("💾 Save Classes"):
+            if not new_class_list:
+                st.warning("ต้องมีอย่างน้อย 1 class")
+            else:
+                save_classes(new_class_list)
+                st.session_state.class_list = new_class_list
+                st.success("บันทึก classes.txt แล้ว")
+                st.rerun()
+
+        if not new_class_list:
+            st.warning("⚠ กรุณาเพิ่มอย่างน้อย 1 class")
+            return
 
         stroke_width = st.slider("ความหนาเส้น", 1, 5, 2)
 
         st.divider()
-        st.markdown("### 🖼️ Image Config")
+        st.markdown("### 🛠️ Drawing Mode")
 
-        rotate_angle = st.slider("🔄 Rotate", -180, 180, 0, step=5)
-        flip_h = st.checkbox("↔️ Flip Horizontal")
-        flip_v = st.checkbox("↕️ Flip Vertical")
-        brightness = st.slider("☀️ Brightness", 0.2, 2.0, 1.0)
-        contrast = st.slider("🎚️ Contrast", 0.2, 2.0, 1.0)
-        color = st.slider("🎨 Color", 0.2, 2.0, 1.0)
-
-    # ---------- RIGHT ----------
-    with col2:
-        uploaded_files = st.file_uploader(
-            "📂 อัปโหลดรูปภาพ (หลายรูปได้)",
-            type=["png", "jpg", "jpeg"],
-            accept_multiple_files=True,
+        drawing_mode = st.radio(
+            "เครื่องมือวาด",
+            ["rect", "polygon", "transform"],
+            horizontal=True,
+            help="rect=วาดสี่เหลี่ยม | polygon=วาดหลายเหลี่ยม (ดับเบิลคลิกเพื่อปิด) | transform=เลือก/หมุน/ย้ายกรอบที่วาดแล้ว"
         )
 
-        if uploaded_files:
-            file_names = [f.name for f in uploaded_files]
+        if drawing_mode == "polygon":
+            st.info("💡 คลิกเพื่อเพิ่มจุด **ดับเบิลคลิก** เพื่อปิดรูปทรง")
 
-            selected_idx = st.selectbox(
-                "🖼️ เลือกรูปที่จะ Label",
-                range(len(file_names)),
-                format_func=lambda i: file_names[i],
-            )
+        st.divider()
+        st.markdown("### 🖼️ Image Config")
 
-            uploaded_file = uploaded_files[selected_idx]
+        defaults = {
+            "rotate_angle": 0,
+            "flip_h": False,
+            "flip_v": False,
+            "brightness": 1.0,
+            "contrast": 1.0,
+            "color": 1.0,
+        }
 
-            orig_image = Image.open(uploaded_file).convert("RGB")
-            image = transform_image(
-                orig_image,
-                rotate_angle,
-                flip_h,
-                flip_v,
-                brightness,
-                contrast,
-                color,
-            )
+        for k, v in defaults.items():
+            if k not in st.session_state:
+                st.session_state[k] = v
 
-            w, h = image.size
+        rotate_angle = st.slider("🔄 Rotate", -180, 180, step=5, key="rotate_angle")
+        flip_h = st.checkbox("↔️ Flip Horizontal", key="flip_h")
+        flip_v = st.checkbox("↕️ Flip Vertical", key="flip_v")
+        brightness = st.slider("☀️ Brightness", 0.2, 2.0, key="brightness")
+        contrast = st.slider("🎚️ Contrast", 0.2, 2.0, key="contrast")
+        color = st.slider("🎨 Color", 0.2, 2.0, key="color")
 
-            canvas_key = f"canvas_{uploaded_file.name}_{rotate_angle}_{flip_h}_{flip_v}_{brightness}_{contrast}_{color}"
+        def reset_image_config():
+            for k, v in defaults.items():
+                st.session_state[k] = v
 
-            canvas = st_canvas(
-                fill_color="rgba(0, 150, 255, 0.2)",
-                stroke_width=stroke_width,
-                stroke_color="#0066CC",
-                background_image=image,
-                update_streamlit=True,
-                height=500,
-                drawing_mode="rect",
-                key=canvas_key,
-            )
+        st.button("♻️ Reset Image Config", on_click=reset_image_config)
 
-            if canvas.json_data is not None:
-                objects = pd.json_normalize(canvas.json_data["objects"])
-                if not objects.empty:
-                    st.success(f"✅ พบ {len(objects)} กรอบ")
+    with col2:
+        import tkinter as tk
+        from tkinter import filedialog
+
+        # --- ส่วนที่ 1: ระบบเลือก Folder และ File ---
+        if "selected_files" not in st.session_state:
+            st.session_state.selected_files = []
+        if "target_folder" not in st.session_state:
+            st.session_state.target_folder = ""
+
+        # ปรับปุ่มให้ชิดกันทางซ้าย
+        col_btn1, col_btn2, col_spacer = st.columns([0.25, 0.25, 0.5])
+        
+        with col_btn1:
+            if st.button("📁 Open Folder...", use_container_width=True):
+                root = tk.Tk()
+                root.withdraw()
+                root.attributes('-topmost', True)
+                folder_selected = filedialog.askdirectory(master=root)
+                root.destroy()
+                if folder_selected:
+                    st.session_state.selected_folder = folder_selected
+                    st.session_state.selected_files = sorted([
+                        os.path.join(folder_selected, f) for f in os.listdir(folder_selected)
+                        if f.lower().endswith((".png", ".jpg", ".jpeg"))
+                    ])
+                    st.rerun()
+
+        with col_btn2:
+            if st.button("🖼️ Open File...", use_container_width=True):
+                root = tk.Tk()
+                root.withdraw()
+                root.attributes('-topmost', True)
+                files_selected = filedialog.askopenfilenames(
+                    master=root,
+                    filetypes=[("Image files", "*.png *.jpg *.jpeg")]
+                )
+                root.destroy()
+                if files_selected:
+                    st.session_state.selected_files = list(files_selected)
+                    st.session_state.target_folder = os.path.dirname(files_selected[0])
+                    st.rerun()
+
+        if not st.session_state.selected_files:
+            st.info("💡 เลือก 'Open Folder' หรือ 'Open File' เพื่อเริ่มต้นทำ Labeling")
+            return
+
+        # --- ส่วนที่ 2: เลือกรูปจากรายการที่มี ---
+        file_paths = st.session_state.selected_files
+        file_names_only = [os.path.basename(p) for p in file_paths]
+
+        selected_idx = st.selectbox(
+            f"📄 รายการไฟล์ (พบ {len(file_names_only)} รูป)",
+            range(len(file_names_only)),
+            format_func=lambda i: file_names_only[i],
+        )
+
+        # --- ส่วนที่ 3: โหลดข้อมูลไฟล์ ---
+        img_path = file_paths[selected_idx]
+        img_name = file_names_only[selected_idx]
+        
+        with open(img_path, "rb") as f:
+            file_bytes = f.read()
+        
+        # เตรียมรูปภาพสำหรับการแปลงค่า (Image Config)
+        orig_image = Image.open(img_path).convert("RGB")
+
+        image = transform_image(
+            orig_image,
+            rotate_angle,
+            flip_h,
+            flip_v,
+            brightness,
+            contrast,
+            color,
+        )
+
+        orig_w, orig_h = image.size
+
+        # การคำนวณสเกลเพื่อแสดงผลบน Canvas
+        if orig_w > MAX_WIDTH:
+            scale = MAX_WIDTH / orig_w
+            new_w = int(orig_w * scale)
+            new_h = int(orig_h * scale)
+            display_image = image.resize((new_w, new_h))
+        else:
+            scale = 1.0
+            new_w, new_h = orig_w, orig_h
+            display_image = image
+
+        # สร้าง Key สำหรับ Canvas เพื่อให้วาดใหม่เมื่อเปลี่ยนรูป
+        hash_input = file_bytes + str(selected_idx).encode()
+        canvas_hash = hashlib.md5(hash_input).hexdigest()
+        canvas_key = f"canvas_{canvas_hash}"
+
+        canvas = st_canvas(
+            fill_color="rgba(0,150,255,0.2)",
+            stroke_width=stroke_width,
+            stroke_color="#0066CC",
+            background_image=display_image,
+            update_streamlit=True,
+            height=new_h,
+            width=new_w,
+            drawing_mode=drawing_mode,
+            key=canvas_key,
+        )
+
+        if canvas.json_data is not None:
+            objects = pd.json_normalize(canvas.json_data["objects"])
+
+            if not objects.empty:
+                NOISE_TYPES = ("circle",)
+                valid_objects = objects[~objects["type"].isin(NOISE_TYPES)].copy()
+
+                def is_valid_rect(row):
+                    if row.get("type") not in ("rect", None):
+                        return True
+                    w_box = row.get("width", 0) * row.get("scaleX", 1.0) / scale
+                    h_box = row.get("height", 0) * row.get("scaleY", 1.0) / scale
+                    return w_box >= 5 and h_box >= 5
+
+                valid_objects = valid_objects[valid_objects.apply(is_valid_rect, axis=1)].reset_index(drop=True)
+
+                if valid_objects.empty:
+                    st.info("ยังไม่มีกรอบที่ใช้งานได้")
+                else:
+                    st.success(f"✅ พบ {len(valid_objects)} กรอบ")
+                    st.markdown("### 🏷️ กำหนด Class ให้แต่ละกรอบ")
+
+                    class_per_box = []
+                    for i in range(len(valid_objects)):
+                        selected = st.selectbox(
+                            f"กรอบที่ {i+1}",
+                            new_class_list,
+                            key=f"class_box_{i}"
+                        )
+                        class_per_box.append(selected)
 
                     if st.button("💾 บันทึกข้อมูล (Save)", type="primary"):
-                        suffix = []
-                        if rotate_angle != 0:
-                            suffix.append(f"rot{rotate_angle}")
-                        if flip_h:
-                            suffix.append("fh")
-                        if flip_v:
-                            suffix.append("fv")
-                        if brightness != 1.0:
-                            suffix.append(f"b{brightness}")
-                        if contrast != 1.0:
-                            suffix.append(f"c{contrast}")
-                        if color != 1.0:
-                            suffix.append(f"col{color}")
-                        suffix = "_".join(suffix) if suffix else "orig"
+                        label_name = os.path.splitext(img_name)[0] + ".txt"
 
-                        img_name = f"{os.path.splitext(uploaded_file.name)[0]}_{suffix}.jpg"
-                        label_name = img_name.replace(".jpg", ".txt")
+                        os.makedirs(IMG_DIR, exist_ok=True)
+                        os.makedirs(LABEL_DIR, exist_ok=True)
 
+                        # บันทึกรูปภาพลงโฟลเดอร์ datasets
                         image.save(os.path.join(IMG_DIR, img_name))
 
                         lines = []
-                        for _, row in objects.iterrows():
-                            xc = (row["left"] + row["width"] / 2) / w
-                            yc = (row["top"] + row["height"] / 2) / h
-                            nw = row["width"] / w
-                            nh = row["height"] / h
-                            cid = st.session_state.class_list.index(selected_class)
-                            lines.append(
-                                f"{cid} {xc:.6f} {yc:.6f} {nw:.6f} {nh:.6f}"
-                            )
+                        for idx, row in valid_objects.iterrows():
+                            cid = new_class_list.index(class_per_box[idx])
+
+                            # --- Rectangle → Seg format ---
+                            if row.get("type") in ("rect", None) and pd.notna(row.get("left", None)):
+                                w_box = row["width"] * row.get("scaleX", 1.0) / scale
+                                h_box = row["height"] * row.get("scaleY", 1.0) / scale
+                                angle = row.get("angle", 0)
+                                rad   = math.radians(angle)
+                                tl_x = row["left"] / scale
+                                tl_y = row["top"] / scale
+                                cx = tl_x + (w_box / 2) * math.cos(rad) - (h_box / 2) * math.sin(rad)
+                                cy = tl_y + (w_box / 2) * math.sin(rad) + (h_box / 2) * math.cos(rad)
+                                w2, h2 = w_box / 2, h_box / 2
+                                corners = [(-w2, -h2), (w2, -h2), (w2, h2), (-w2, h2)]
+                                rotated = [(cx + dx * math.cos(rad) - dy * math.sin(rad),
+                                            cy + dx * math.sin(rad) + dy * math.cos(rad)) for dx, dy in corners]
+                                coords = " ".join(f"{x/orig_w:.6f} {y/orig_h:.6f}" for x, y in rotated)
+                                lines.append(f"{cid} {coords}")
+
+                            # --- Polygon → Seg format ---
+                            elif "path" in row and row.get("path") is not None:
+                                try:
+                                    path_data = row["path"]
+                                    points = [(p[1] / scale, p[2] / scale) for p in path_data if len(p) >= 3 and p[0] in ("M", "L")]
+                                    if len(points) < 3: continue
+                                    coords = " ".join(f"{x/orig_w:.6f} {y/orig_h:.6f}" for x, y in points)
+                                    lines.append(f"{cid} {coords}")
+                                except Exception: continue
 
                         with open(os.path.join(LABEL_DIR, label_name), "w") as f:
                             f.write("\n".join(lines))
